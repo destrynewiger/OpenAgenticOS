@@ -1404,7 +1404,7 @@ function osN2Panel(s) {
   if (!s.hasKey) {
     const steps = [
       'cd OpenAgenticOS',
-      "printf '\\nOPENROUTER_API_KEY=sk-or-...\\nN2_MODEL=nex-agi/nex-n2-pro:free\\n' >> .env",
+      "printf '\\nOPENROUTER_API_KEY=your_openrouter_key_here\\nN2_MODEL=nex-agi/nex-n2-pro:free\\n' >> .env",
       'npm start',
     ].join('\n');
     return `<div class="os-surface-wrap">${osHead(s, osRecheckBtn(s))}

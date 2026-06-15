@@ -21,7 +21,7 @@ test('research system prompt requires strict JSON and no invented facts', () => 
 });
 
 test('OpenAI key selects the OpenAI provider', () => {
-  assert.equal(llmProvider({ llm: { openaiKey: 'sk-test', anthropicKey: '', geminiKey: '' } }), 'openai');
+  assert.equal(llmProvider({ llm: { openaiKey: 'test-api-key', anthropicKey: '', geminiKey: '' } }), 'openai');
 });
 
 test('research brief fallback persists structured JSON without inventing stack facts', async () => {

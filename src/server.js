@@ -1332,7 +1332,7 @@ route('POST', '/api/agent-os/n2/chat', async (req, res, { body }) => {
       state: 'needs_api_key_or_router',
       setup: [
         'cd OpenAgenticOS',
-        "printf '\\nOPENROUTER_API_KEY=sk-or-...\\nN2_MODEL=nex-agi/nex-n2-pro:free\\n' >> .env",
+        "printf '\\nOPENROUTER_API_KEY=your_openrouter_key_here\\nN2_MODEL=nex-agi/nex-n2-pro:free\\n' >> .env",
         'npm start',
       ],
     });
