@@ -1,0 +1,34 @@
+# dependencies
+node_modules/
+
+# local environment and credentials
+.env
+.env.*
+!.env.example
+data/provider-keys.json
+data/provider-keys.*.json
+*.pem
+*.key
+*.p12
+*.p8
+
+# local databases, backups, generated exports
+.gtm.db
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+data/*.db
+data/*.db-*
+data/backups/
+data/exports/
+
+# runtime logs and local tool state
+logs/
+*.log
+.claude/
+
+# OS/editor noise
+.DS_Store
+.vscode/
+.idea/

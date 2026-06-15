@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "OpenAgenticOS Call Cockpit",
+  "version": "0.2.0",
+  "description": "Side-panel call cockpit: account brief, ranked contacts, talk track, objection notes, memory, and one-click LinkedIn for whoever you're dialing.",
+  "permissions": ["storage", "tabs", "sidePanel"],
+  "host_permissions": [
+    "http://localhost:4100/*",
+    "http://127.0.0.1:4100/*",
+    "https://*.ts.net/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "options_page": "options.html",
+  "action": { "default_title": "Open OpenAgenticOS Call Cockpit" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://docs.google.com/spreadsheets/*",
+        "https://app.apollo.io/*",
+        "https://*.trellus.ai/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

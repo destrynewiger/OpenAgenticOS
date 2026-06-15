@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header>
+    <strong>Call Cockpit</strong>
+    <span id="status" class="muted"></span>
+    <span class="grow"></span>
+    <button id="opts" class="ghost" title="Options">⚙</button>
+  </header>
+  <div class="bar">
+    <input id="q" placeholder="phone or name…" />
+    <button id="find">Find</button>
+  </div>
+  <main id="view"><div class="muted pad">Open this next to your dialer or sheet. When you start dialing, the contact's brief lands here. Or search above.</div></main>
+  <div id="toast"></div>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

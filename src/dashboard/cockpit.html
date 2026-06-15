@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Call Cockpit</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d1117; color: #e6edf3; padding: 14px; max-width: 760px; }
+    .muted { color: #8b949e; } .err { color: #f85149; }
+    .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+    input, textarea { background: #161b22; border: 1px solid #30363d; color: #e6edf3; border-radius: 6px; padding: 6px 8px; }
+    button { background: #238636; border: 0; color: #fff; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-weight: 600; }
+    button.secondary { background: #21262d; border: 1px solid #30363d; }
+    a.li, .li-btn { display: inline-block; background: #0a66c2; color: #fff; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    .head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .score { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: #21262d; border: 2px solid #3fb950; }
+    .why { background: #11240f; border: 1px solid #2ea04340; border-left: 3px solid #3fb950; padding: 8px 10px; border-radius: 6px; margin-bottom: 12px; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+    .lab { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #8b949e; margin-bottom: 3px; }
+    .sec-h { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #8b949e; margin: 16px 0 6px; }
+    .obj { border-left: 3px solid #d29922; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .contact { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #30363d; border-radius: 7px; margin-bottom: 6px; cursor: pointer; background: #0f141b; }
+    .contact:hover { border-color: #58a6ff; } .contact.current { border-color: #3fb950; background: #11240f; }
+    .contact .c-main { flex: 1; min-width: 0; } .contact .mini-li { color: #58a6ff; text-decoration: none; font-size: 12px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; } .chip { background: #21262d; border: 1px solid #30363d; border-radius: 99px; padding: 1px 8px; font-size: 12px; }
+    .outcomes { display: flex; flex-wrap: wrap; gap: 6px; } .outcomes button { background: #21262d; border: 1px solid #30363d; color: #e6edf3; }
+    #note { width: 100%; margin-top: 7px; min-height: 40px; resize: vertical; }
+    #toast { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: #1f6feb; color: #fff; padding: 8px 14px; border-radius: 7px; opacity: 0; transition: opacity .2s; }
+    #toast.show { opacity: 1; } #toast.err { background: #b62324; }
+    @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <strong>Call Cockpit</strong>
+    <input id="q" placeholder="phone or name…" style="flex:1;min-width:120px" />
+    <button onclick="manual()">Find</button>
+    <button class="secondary" onclick="load()">Refresh</button>
+  </div>
+  <div id="view"><div class="muted">Pass ?contact=ID or ?phone=… (or use Find above).</div></div>
+  <div id="toast"></div>
+  <script>
+    const view = document.getElementById('view');
+    const params = new URLSearchParams(location.search);
+    const API = params.get('api') || '';
+    let payload = null;
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    let toastTimer;
+    function toast(msg, isErr) { const t = document.getElementById('toast'); t.textContent = msg; t.className = 'show' + (isErr ? ' err' : ''); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = '', 2600); }
+
+    function baseUrl() {
+      if (params.get('contact')) return `${API}/api/cockpit/contact/${encodeURIComponent(params.get('contact'))}`;
+      const qs = new URLSearchParams();
+      ['phone', 'email', 'linkedin', 'name', 'account'].forEach((k) => { if (params.get(k)) qs.set(k, params.get(k)); });
+      return qs.toString() ? `${API}/api/cockpit/by-contact?${qs}` : '';
+    }
+    async function load() {
+      const u = baseUrl();
+      if (!u) return;
+      view.innerHTML = '<div class="muted">Loading…</div>';
+      try {
+        const res = await fetch(u);
+        if (res.status === 404) return view.innerHTML = '<div class="err">No matching contact in the command center yet.</div>';
+        if (!res.ok) throw new Error(res.statusText);
+        payload = await res.json();
+        render(payload);
+      } catch (e) { view.innerHTML = `<div class="err">Error: ${esc(e.message)}</div>`; }
+    }
+    function manual() {
+      const v = document.getElementById('q').value.trim(); if (!v) return;
+      ['contact', 'phone', 'email', 'linkedin', 'name'].forEach((k) => params.delete(k));
+      params.set(/[a-zA-Z]/.test(v) ? 'name' : 'phone', v);
+      history.replaceState(null, '', '?' + params.toString());
+      load();
+    }
+    function loadContact(id) {
+      ['phone', 'email', 'linkedin', 'name'].forEach((k) => params.delete(k));
+      params.set('contact', id); history.replaceState(null, '', '?' + params.toString()); load();
+    }
+    function field(lab, val, cls = '') { return val ? `<div class="card ${cls}"><div class="lab">${esc(lab)}</div>${esc(val)}</div>` : ''; }
+    const OUTCOMES = [['connected','Connected'],['voicemail','Voicemail'],['no_answer','No answer'],['meeting_booked','Meeting booked'],['not_interested','Not interested'],['bad_number','Bad number'],['callback','Callback']];
+
+    function render(d) {
+      const c = d.contact || {}, a = d.account || {}, card = d.card || {}, t = d.talkTrack || {}, b = d.brief || {}, m = d.memory || {};
+      const score = Math.max(0, Math.min(100, a.score || 0));
+      const li = d.linkedin ? `<a class="li" href="${esc(d.linkedin)}" target="_blank" rel="noopener">Open LinkedIn ↗</a>` : '<span class="muted">no LinkedIn</span>';
+      const contacts = (d.accountContacts || []).map((x) => `<div class="contact ${x.isCurrent ? 'current' : ''}" onclick="loadContact(${x.id})">
+        <div class="c-main"><b>${esc(x.name || 'Unknown')}${x.isCurrent ? ' • on call' : ''}</b><div class="muted">${esc(x.title || x.persona_role || '')}${x.phone ? ' · ' + esc(x.phone) : ''}</div></div>
+        ${x.linkedin ? `<a class="mini-li" href="${esc(x.linkedin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">LinkedIn ↗</a>` : ''}</div>`).join('');
+      const signals = (b.recent_signals || []).map((s) => `<div class="card"><b>${esc(s.label || 'Signal')}</b>${s.detail ? ' — ' + esc(s.detail) : ''}${s.source ? `<div class="muted">${esc(s.source)}</div>` : ''}</div>`).join('');
+      const people = (b.relevant_people || []).map((p) => `<div class="contact"><div class="c-main"><b>${esc(p.name || 'Unknown')}</b><div class="muted">${esc(p.title || '')}${p.source ? ' · ' + esc(p.source) : ''}${p.activity ? ' · ' + esc(p.activity) : ''}</div></div>${p.linkedin ? `<a class="mini-li" href="${esc(p.linkedin)}" target="_blank" rel="noopener">LinkedIn ↗</a>` : ''}</div>`).join('');
+      const hist = (m.history || []).map((h) => `<span class="chip" title="${esc(h.detail || '')}">${esc(h.label)}</span>`).join('');
+      const recent = (d.recentOutcomes || []).map((o) => `<span class="chip">${esc((o.outcome || '').replace(/_/g, ' '))}${o.note ? ': ' + esc(o.note) : ''}</span>`).join('');
+      view.innerHTML = `
+        <div class="head">
+          <div class="score">${score}</div>
+          <div style="flex:1"><div style="font-weight:700;font-size:16px">${esc(a.name || 'Account')}</div>
+            <div class="muted">${esc(c.name || '')} — ${esc(c.title || c.persona_role || '')} ${d.matchedBy ? `<span class="chip">matched: ${esc(d.matchedBy)}</span>` : ''}</div></div>
+          ${li}
+        </div>
+        ${d.whyNow ? `<div class="why"><b>Why now:</b> ${esc(d.whyNow)}</div>` : ''}
+        ${field('Opening line', card.opening_line)}
+        ${t.angle ? `<div class="card"><div class="lab">Talk track · ${esc(t.persona || '')}</div>${esc(t.angle)}${t.cta ? `<div class="muted" style="margin-top:6px">CTA: ${esc(t.cta)}</div>` : ''}</div>` : ''}
+        <div class="grid">${field('Likely pain', card.likely_pain)}${field('Good question', card.good_question)}</div>
+        ${card.likely_objection ? `<div class="card obj"><div class="lab">If they say “${esc(card.likely_objection)}”</div>${esc(card.best_response)}</div>` : ''}
+        ${field('Seller angle', card.rootly_angle)}
+        ${signals ? `<div class="sec-h">Recent signals</div>${signals}` : ''}
+        <div class="sec-h">Contacts ranked by fit</div>${contacts || '<div class="muted">No other contacts mapped.</div>'}
+        ${people ? `<div class="sec-h">People (from research)</div>${people}` : ''}
+        <div class="sec-h">Memory</div>
+        ${m.proof ? field('Proof', m.proof) : ''}${m.positioning ? field('Positioning', m.positioning) : ''}
+        ${hist ? `<div class="card"><div class="lab">History</div><div class="chips">${hist}</div></div>` : ''}
+        ${m.notes ? field('Account notes', m.notes) : ''}${b.why_care ? field('Why they might care', b.why_care) : ''}
+        <div class="sec-h">Log outcome</div>
+        <div class="outcomes">${OUTCOMES.map(([v, l]) => `<button onclick="logOutcome('${v}')">${esc(l)}</button>`).join('')}</div>
+        <textarea id="note" placeholder="optional note (saved to the account)…"></textarea>
+        ${recent ? `<div class="sec-h">Recent</div><div class="chips">${recent}</div>` : ''}`;
+    }
+    async function logOutcome(outcome) {
+      if (!payload?.contact?.id) return toast('No contact loaded', true);
+      const note = document.getElementById('note')?.value?.trim() || '';
+      try {
+        const res = await fetch(`${API}/api/cockpit/outcome`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contactId: payload.contact.id, outcome, note }) });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+        toast('Logged: ' + outcome.replace(/_/g, ' '));
+        loadContact(payload.contact.id);
+      } catch (e) { toast('Log failed: ' + e.message, true); }
+    }
+    load();
+  </script>
+</body>
+</html>

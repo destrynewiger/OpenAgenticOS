@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenAgenticOS</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo">🎯</span>
+      <div>
+        <h1>OpenAgenticOS</h1>
+        <div class="sub" id="subline">Memory · agents · council · local workflows</div>
+      </div>
+    </div>
+    <nav id="nav">
+      <a href="#/agent-os" data-route="/agent-os">Agent OS</a>
+      <a href="#/" data-route="/">Home</a>
+      <a href="#/queue" data-route="/queue">Call Queue</a>
+      <a href="#/map" data-route="/map">Memory Map</a>
+      <a href="#/planned" data-route="/planned">Planned</a>
+      <a href="#/accounts" data-route="/accounts">Accounts</a>
+      <a href="#/contacts" data-route="/contacts">Contacts</a>
+      <a href="#/signals" data-route="/signals">Signals</a>
+      <a href="#/exports" data-route="/exports">Exports</a>
+      <a href="#/closeout" data-route="/closeout">Closeout</a>
+      <a href="#/settings" data-route="/settings">Settings</a>
+    </nav>
+  </header>
+  <main id="view"><div class="empty">Loading…</div></main>
+  <input type="file" id="fileInput" accept=".csv" style="display:none" />
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+company,website,rootly_customer,pagerduty_customer,incident_stack,status_page,notes
+Quanta Cloud,quanta-cloud.example,,,,,Inbound from reliability webinar
+Northwind Logistics,northwind-logistics.example,,,,,Referred by partner
+Helios Payments,helios-payments.example,,,,,Fintech; compliance-heavy
+Vega Streaming,vega-streaming.example,,,,,Media; few contacts known
+Acme Retail,acme-retail.example,,,,,Peak-season reliability pain
+Brightwave Analytics,brightwave-analytics.example,,,,,Cold add; no research cached yet
+Summit Robotics,summit-robotics.example,,,,,Not in research cache; verify everything
+Orion Telecom,orion-telecom.example,yes,,,,Existing customer (should be blocked)

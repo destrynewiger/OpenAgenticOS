@@ -1,0 +1,19 @@
+{
+  "name": "openagenticos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first agent operating dashboard with memory, agent tiles, council deliberation, and optional GTM workflow examples.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --experimental-sqlite --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --watch --experimental-sqlite --disable-warning=ExperimentalWarning src/server.js",
+    "cli": "node --experimental-sqlite --disable-warning=ExperimentalWarning src/cli.js",
+    "seed:demo": "node --experimental-sqlite --disable-warning=ExperimentalWarning scripts/seed-demo.mjs",
+    "monitor": "node --experimental-sqlite --disable-warning=ExperimentalWarning src/jobs/sumbleMonitor.js",
+    "test": "rm -f data/provider-keys.test.json && PROVIDER_KEYS_FILE=./data/provider-keys.test.json node --experimental-sqlite --disable-warning=ExperimentalWarning --test"
+  },
+  "dependencies": {}
+}
