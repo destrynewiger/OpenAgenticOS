@@ -23,6 +23,8 @@ const TRIGGER_LABEL = {
   filing_quote: 'Public quote',
   warm_account: 'Warm',
   historical_booked_meeting: 'Past meeting',
+  research_pack: 'Research pack',
+  outreach_history: 'Outreach history',
 };
 
 export function buildGraph({ bands, limit = 120, includeTech = true } = {}) {

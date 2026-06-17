@@ -221,7 +221,7 @@ async function renderHome() {
     <div class="toolbar" style="margin-top:16px">
       <button class="btn primary" onclick="researchAll()">Run research (all)</button>
       <button class="btn" onclick="rescoreAll()">Recompute scores</button>
-      <button class="btn" onclick="triggerImport('accounts')">Import accounts CSV</button>
+      <button class="btn" onclick="triggerImport('accounts')">↑ Import / add</button>
       <span class="spacer"></span>
       <a class="btn" href="#/accounts">All accounts →</a>
     </div>
@@ -268,11 +268,9 @@ async function renderAccounts() {
       <label class="btn"><input type="checkbox" id="f-pd" ${acctFilter.pagerduty ? 'checked' : ''}/> PagerDuty</label>
       <label class="btn"><input type="checkbox" id="f-sp" ${acctFilter.hasStatusPage ? 'checked' : ''}/> Status page</label>
       <button class="btn primary" onclick="applyFilters()">Filter</button>
-      <button class="btn" onclick="acctFilter={};render()">Clear</button>
+      <button class="btn ghost" onclick="clearAcctFilter()">Clear</button>
       <span class="spacer"></span>
-      <button class="btn" onclick="triggerImport('accounts')">Import accounts</button>
-      <button class="btn" onclick="triggerImport('contacts')">Import contacts</button>
-      <button class="btn" onclick="addAccount()">+ Add account</button>
+      <button class="btn" onclick="triggerImport('accounts')">↑ Import / add</button>
       <button class="btn primary" onclick="researchAll()">Research all</button>
     </div>
     <table><thead><tr><th>Score</th><th>Account</th><th>Priority</th><th>Status</th><th>PD</th><th>Customer</th><th>Incident stack</th><th>First contact</th><th>Next action / export</th></tr></thead>
@@ -2610,21 +2608,117 @@ window.addContact = async (id) => {
   if (!body.name && !body.email) return toast('name or email required', true);
   await api(`/accounts/${id}/contacts`, 'POST', body); toast('Contact added'); render();
 };
-window.addAccount = async () => {
-  const name = prompt('Company name?'); if (!name) return;
-  const website = prompt('Website / domain? (optional)') || '';
-  await api('/accounts', 'POST', { name, website }); toast('Account added'); render();
-};
+window.addAccount = () => openImportModal('single');
+window.clearAcctFilter = () => { acctFilter = {}; render(); };
 
-// CSV import via hidden file input
+// ---------- modal system ----------
+function openModal(html) {
+  const root = document.getElementById('modal-root');
+  if (!root) return null;
+  root.innerHTML = `<div class="modal-overlay" data-modal-overlay><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`;
+  const overlay = root.querySelector('[data-modal-overlay]');
+  const close = () => { root.innerHTML = ''; document.removeEventListener('keydown', onKey); window._closeModal = null; };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+  root.querySelectorAll('[data-modal-close]').forEach((b) => b.addEventListener('click', close));
+  requestAnimationFrame(() => overlay.classList.add('open'));
+  window._closeModal = close;
+  return { close };
+}
+function closeModal() { if (window._closeModal) window._closeModal(); }
+
+const ICON_UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/></svg>';
+
+// ---------- import / add modal ----------
 let importType = 'accounts';
-window.triggerImport = (type) => { importType = type; fileInput.click(); };
+window.triggerImport = (type) => openImportModal(type || 'accounts');
+
+function openImportModal(type = 'accounts') {
+  importType = type === 'single' ? 'accounts' : type;
+  const initial = type;
+  const tab = (t, label) => `<button class="modal-tab${t === initial ? ' active' : ''}" data-imp-tab="${t}">${label}</button>`;
+  openModal(`
+    <div class="modal-head">
+      <div><h3>Import &amp; add</h3><p class="modal-sub">Bring accounts and contacts into OpenAgenticOS — drop a CSV, paste rows, or add one by hand.</p></div>
+      <button class="modal-x" data-modal-close aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-tabs">
+      ${tab('accounts', 'Accounts CSV')}
+      ${tab('contacts', 'Contacts CSV')}
+      ${tab('single', 'Add one account')}
+    </div>
+    <div id="imp-body" class="modal-body"></div>
+  `);
+  let active = initial;
+  const setTab = (t) => { active = t; importType = t === 'single' ? 'accounts' : t; document.querySelectorAll('[data-imp-tab]').forEach((x) => x.classList.toggle('active', x.dataset.impTab === t)); renderImportBody(t); };
+  document.querySelectorAll('[data-imp-tab]').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.impTab)));
+  renderImportBody(initial);
+}
+
+function renderImportBody(tab) {
+  const body = document.getElementById('imp-body');
+  if (!body) return;
+  if (tab === 'single') {
+    body.innerHTML = `
+      <form class="modal-form" id="imp-single">
+        <label>Account name<input name="acctname" required placeholder="Acme Corp" autocomplete="off" autofocus></label>
+        <label>Website / domain <span class="opt">optional</span><input name="website" placeholder="acme.com" autocomplete="off"></label>
+        <div class="modal-actions"><button type="button" class="btn ghost" data-modal-close>Cancel</button><button type="submit" class="btn primary">Add account</button></div>
+      </form>`;
+    body.querySelector('#imp-single').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const name = f.acctname.value.trim();
+      if (!name) return toast('Account name is required', true);
+      try { await api('/accounts', 'POST', { name, website: f.website.value.trim() }); toast('Account added'); closeModal(); render(); }
+      catch (err) { toast(err.message, true); }
+    });
+    setTimeout(() => { const i = body.querySelector('input[name=acctname]'); if (i) i.focus(); }, 30);
+    return;
+  }
+  const label = tab === 'contacts' ? 'contacts' : 'accounts';
+  const cols = tab === 'contacts' ? 'name, email, title, phone, linkedin, account' : 'name, website, phone, persona, …';
+  body.innerHTML = `
+    <div class="dropzone" id="imp-drop">
+      <div class="dz-ico">${ICON_UPLOAD}</div>
+      <div class="dz-title">Drop a ${label} CSV here</div>
+      <div class="dz-sub">or <button type="button" class="link-btn" id="imp-browse">browse your files</button></div>
+      <div class="dz-cols">columns: <code>${esc(cols)}</code></div>
+    </div>
+    <div class="dz-or"><span>or paste CSV</span></div>
+    <textarea id="imp-paste" class="modal-paste" placeholder="${esc(cols)}" spellcheck="false"></textarea>
+    <div class="modal-actions">
+      <button type="button" class="btn ghost" data-modal-close>Cancel</button>
+      <button type="button" class="btn primary" id="imp-paste-go">Import pasted CSV</button>
+    </div>`;
+  const drop = body.querySelector('#imp-drop');
+  body.querySelector('#imp-browse').addEventListener('click', () => fileInput.click());
+  body.querySelector('#imp-paste-go').addEventListener('click', () => {
+    const t = body.querySelector('#imp-paste').value.trim();
+    if (t) doImport(t, 'pasted.csv'); else toast('Paste some CSV rows first', true);
+  });
+  ['dragover', 'dragenter'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  drop.addEventListener('dragleave', (e) => { e.preventDefault(); drop.classList.remove('over'); });
+  drop.addEventListener('drop', async (e) => {
+    e.preventDefault(); drop.classList.remove('over');
+    const file = e.dataTransfer.files[0];
+    if (file) doImport(await file.text(), file.name);
+  });
+}
+
+async function doImport(csv, source) {
+  try {
+    const r = await api('/import', 'POST', { csv, type: importType, source });
+    toast(`Imported — ${r.added || 0} added · ${r.updated || 0} updated${r.contacts ? ' · ' + r.contacts + ' contacts' : ''}`);
+    closeModal();
+    render();
+  } catch (e) { toast(e.message, true); }
+}
+
 fileInput.addEventListener('change', async () => {
   const file = fileInput.files[0]; if (!file) return;
-  const csv = await file.text();
-  try { const r = await api('/import', 'POST', { csv, type: importType, source: file.name });
-    toast(`Imported: ${JSON.stringify(r).slice(0, 120)}`); render();
-  } catch (e) { toast(e.message, true); }
+  await doImport(await file.text(), file.name);
   fileInput.value = '';
 });
 

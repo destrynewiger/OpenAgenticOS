@@ -9,9 +9,33 @@
 <body>
   <header>
     <div class="brand">
-      <span class="logo">🎯</span>
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OpenAgenticOS">
+          <defs>
+            <linearGradient id="brandGrad" x1="8" y1="20" x2="92" y2="80" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#7c6ef0" />
+              <stop offset="0.5" stop-color="#cf6f95" />
+              <stop offset="1" stop-color="#f0a64f" />
+            </linearGradient>
+          </defs>
+          <g fill="none" stroke="url(#brandGrad)" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="50" cy="50" r="41" stroke-width="2.4" opacity="0.45" stroke-dasharray="150 38" />
+            <polygon points="50,16 79.4,33 79.4,67 50,84 20.6,67 20.6,33" stroke-width="3" />
+            <path d="M50 16 V84 M20.6 33 L79.4 67 M79.4 33 L20.6 67" stroke-width="3" />
+            <circle cx="50" cy="50" r="11.5" fill="#0a0c12" stroke-width="3.4" />
+          </g>
+          <g fill="url(#brandGrad)">
+            <circle cx="50" cy="16" r="5.4" />
+            <circle cx="79.4" cy="33" r="5.4" />
+            <circle cx="79.4" cy="67" r="5.4" />
+            <circle cx="50" cy="84" r="5.4" />
+            <circle cx="20.6" cy="67" r="5.4" />
+            <circle cx="20.6" cy="33" r="5.4" />
+          </g>
+        </svg>
+      </span>
       <div>
-        <h1>OpenAgenticOS</h1>
+        <h1>OpenAgentic<span class="logo-os">OS</span></h1>
         <div class="sub" id="subline">Memory · agents · council · local workflows</div>
       </div>
     </div>
@@ -31,6 +55,7 @@
   </header>
   <main id="view"><div class="empty">Loading…</div></main>
   <input type="file" id="fileInput" accept=".csv" style="display:none" />
+  <div id="modal-root"></div>
   <script src="/app.js"></script>
 </body>
 </html>

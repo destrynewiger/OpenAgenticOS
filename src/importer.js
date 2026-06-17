@@ -116,6 +116,124 @@ export function importContactsCsv(text, { source = 'contacts-csv' } = {}) {
 
 const clean = (v) => String(v ?? '').trim();
 
+function parseTableToObjects(text) {
+  const firstLine = String(text || '').split(/\r?\n/).find((line) => line.trim()) || '';
+  const delimiter = (firstLine.match(/\t/g) || []).length > (firstLine.match(/,/g) || []).length ? '\t' : ',';
+  if (delimiter === ',') return parseCsvToObjects(text);
+  const lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim());
+  if (!lines.length) return { headers: [], records: [] };
+  const headers = lines[0].split('\t').map((h) => h.trim());
+  const records = lines.slice(1).map((line) => {
+    const cells = line.split('\t');
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = clean(cells[i]); });
+    return obj;
+  });
+  return { headers, records };
+}
+
+function mergeNote(existing, next) {
+  const prior = clean(existing);
+  const add = clean(next);
+  if (!add) return prior;
+  if (!prior) return add;
+  if (prior.includes(add)) return prior;
+  return `${prior} | ${add}`;
+}
+
+function addSignalOnce(accountId, kind, label, detail, source, confidence = 80) {
+  const sigs = db.listSignals(accountId);
+  const dupe = sigs.find((s) => s.kind === kind && s.label === label && clean(s.detail) === clean(detail) && s.source === source);
+  if (dupe) return null;
+  return db.addSignal(accountId, { kind, label, detail, source, confidence });
+}
+
+function addTechOnce(accountId, tool, source, confidence = 80) {
+  const name = clean(tool).replace(/\s+/g, ' ');
+  if (!name) return null;
+  const dupe = db.listTech(accountId).find((t) => clean(t.tool).toLowerCase() === name.toLowerCase() && t.source === source);
+  if (dupe) return null;
+  return db.addTech(accountId, { tool: name, category: techCategory(name), source, confidence });
+}
+
+function techCategory(tool) {
+  const s = clean(tool).toLowerCase();
+  if (/pagerduty|opsgenie|victorops|xmatters|firehydrant|rootly|blameless|resolve|incident/.test(s)) return 'incident';
+  if (/datadog|grafana|new relic|splunk|dynatrace|prometheus|sentry|honeycomb|cloudwatch|monitor|appdynamics|elk|kibana|sumo logic|logicmonitor|zabbix|nagios|telegraf|opentelemetry/.test(s)) return 'observability';
+  if (/slack|teams|google chat|zoom/.test(s)) return 'chatops';
+  if (/servicenow|jira service|jira|zendesk|remedy|ivanti/.test(s)) return 'itsm';
+  if (/aws|azure|gcp|google cloud/.test(s)) return 'cloud';
+  return 'other';
+}
+
+function splitList(value) {
+  return clean(value).split(/[,;]\s*/).map((v) => v.trim()).filter(Boolean);
+}
+
+function mapSignalKind(signal, detail = '') {
+  const s = `${signal} ${detail}`.toLowerCase();
+  if (/new leader|leadership|new to/.test(s)) return 'new_to_role';
+  if (/pagerduty|opsgenie|victorops|xmatters|firehydrant|rootly|blameless|incident stack/.test(s)) return 'incident_stack';
+  if (/hiring|sre|devops|platform/.test(s)) return 'infra_scaling';
+  if (/ai|automation|agentic/.test(s)) return 'ai_initiative';
+  if (/evaluation|evaluating|tooling|migration|legacy/.test(s)) return 'eval';
+  return 'source_priority';
+}
+
+function mapProspectTier(tier) {
+  const s = clean(tier).toLowerCase();
+  if (s.includes('buyer')) return 'department_head';
+  if (s.includes('champion')) return 'manager';
+  if (s.includes('end user')) return 'end_user';
+  return '';
+}
+
+function inferDomain(row) {
+  return db.normalizeDomain(row.Domain || row.domain || row['company domain'] || row.website || row.Website || '');
+}
+
+function ensureAccount({ name, domain, source, notes = '', incidentStack = '', pagerDuty = false }) {
+  const { account, created } = db.upsertAccount({
+    name: name || domain,
+    website: domain || '',
+    incident_stack: incidentStack,
+    pagerduty_customer: pagerDuty ? 'yes' : undefined,
+    notes,
+  });
+  const patch = {};
+  const current = db.getAccount(account.id);
+  const merged = mergeNote(current.notes, notes);
+  if (merged !== current.notes) patch.notes = merged;
+  if (!current.incident_stack && incidentStack) patch.incident_stack = incidentStack;
+  if (pagerDuty && current.pagerduty_customer === 'unknown') patch.pagerduty_customer = 'yes';
+  const updated = Object.keys(patch).length ? db.updateAccount(account.id, patch) : current;
+  return { account: updated, created };
+}
+
+function addImportedAccountBrief(accountId, row, source) {
+  const research = clean(row['Research (2025 Report)']);
+  if (!research) return null;
+  const tech = splitList(row['Tech Stack']);
+  const hiring = clean(row['Hiring Teams (Open Role Counts)']);
+  const signals = [
+    clean(row.Signal),
+    clean(row['Job Post Age']) ? `Job post age: ${clean(row['Job Post Age'])}` : '',
+    hiring ? `Hiring: ${hiring}` : '',
+  ].filter(Boolean);
+  return db.addAccountBrief(accountId, {
+    company_overview: research,
+    incident_stack: tech.length ? tech.join(', ') : clean(row['Tech Stack']),
+    recent_signals: signals,
+    relevant_people: [clean(row['Hiring Leads/Managers']), clean(row['New to Leadership Roles'])].filter(Boolean),
+    why_care: research,
+    outbound_angle: clean(row.Signal) ? `Lead with ${clean(row.Signal).toLowerCase()} and verified incident/reliability tooling from the research pack.` : 'Lead with the imported reliability research and verify current priorities live.',
+    call_prep_notes: [research, hiring].filter(Boolean).join(' '),
+    sources: [{ provider: source, label: 'Imported 2025 account research report' }],
+    provider_status: [{ provider: source, status: 'connected', note: 'Local imported research pack' }],
+    generated_by: 'imported_research_pack',
+  });
+}
+
 function addImportedCallNote(accountId, contactId, row) {
   const first = clean(row.first_name) || clean(row.full_name).split(/\s+/)[0] || 'there';
   const company = clean(row.company || row.account || row.company_name);
@@ -256,4 +374,143 @@ export function importRealGtm({ callListText, warmListText = '', source = 'real_
   for (const id of accountIds) rescoreAccount(id);
   db.audit({ action: 'real_data_import', source, result: `created ${created}, updated ${updated}, contacts ${contacts}, signals ${signals}, tasks ${tasks}, warm ${warmAccounts}`, confidence: 100 });
   return { rows: rows.length, created, updated, contacts, signals, tasks, warmAccounts, accountIds: [...accountIds], total: db.listAccounts().length };
+}
+
+export function importResearchPack({ accountResearchText = '', peopleText = '', outreachText = '', source = 'research_pack_2026_06_15' } = {}) {
+  let created = 0, updated = 0, contacts = 0, signals = 0, tech = 0, callLogs = 0, tasks = 0, briefs = 0;
+  const accountIds = new Set();
+
+  for (const row of parseTableToObjects(accountResearchText).records) {
+    const name = clean(row['Account Name']);
+    if (!name) continue;
+    const domain = inferDomain(row);
+    const stack = splitList(row['Tech Stack']);
+    const incidentStack = stack.filter((t) => techCategory(t) !== 'other').join(', ');
+    const pagerDuty = /pagerduty/i.test(`${row.Signal || ''} ${row['Research (2025 Report)'] || ''} ${row['Tech Stack'] || ''}`);
+    const note = [
+      `Research pack signal: ${clean(row.Signal)}`,
+      clean(row['Research (2025 Report)']),
+      clean(row['Employee Count']) ? `Employees: ${clean(row['Employee Count'])}` : '',
+      clean(row.Score) ? `Source score: ${clean(row.Score)}` : '',
+    ].filter(Boolean).join(' | ');
+    const { account, created: isNew } = ensureAccount({ name, domain, source, notes: note, incidentStack, pagerDuty });
+    isNew ? created++ : updated++;
+    accountIds.add(account.id);
+
+    addSignalOnce(account.id, 'research_pack', 'Imported account research', clean(row['Research (2025 Report)']), source, 95) && signals++;
+    addSignalOnce(account.id, mapSignalKind(row.Signal, row['Research (2025 Report)']), clean(row.Signal || 'Imported signal'), clean(row['Research (2025 Report)']), source, 88) && signals++;
+    if (pagerDuty) addSignalOnce(account.id, 'pagerduty_detected', 'PagerDuty mentioned in imported research', clean(row['Research (2025 Report)']), source, 88) && signals++;
+    if (clean(row['Job Post Age']) || clean(row['Hiring Teams (Open Role Counts)'])) {
+      addSignalOnce(account.id, 'infra_scaling', 'Hiring / platform signal', `${clean(row['Job Post Age'])} ${clean(row['Hiring Teams (Open Role Counts)'])}`.trim(), source, 80) && signals++;
+    }
+    for (const t of stack) if (addTechOnce(account.id, t, source, 82)) tech++;
+    if (clean(row['Teams Using Technologies'])) {
+      addSignalOnce(account.id, 'incident_stack', 'Teams using reliability tools', clean(row['Teams Using Technologies']), source, 76) && signals++;
+    }
+    for (const person of splitList(row['Hiring Leads/Managers'])) {
+      const m = person.match(/^(.*?)\s*\((.*?)\)$/);
+      classifyAndAddContact(account.id, { name: clean(m?.[1] || person), title: clean(m?.[2] || ''), source, confidence: 62 });
+      contacts++;
+    }
+    for (const person of splitList(row['New to Leadership Roles'])) {
+      const m = person.match(/^(.*?)\s*\((.*?)\)$/);
+      classifyAndAddContact(account.id, { name: clean(m?.[1] || person), title: clean(m?.[2] || ''), source, confidence: 65 });
+      addSignalOnce(account.id, 'new_to_role', 'New to leadership role', person, source, 82) && signals++;
+      contacts++;
+    }
+    if (clean(row['Research (2025 Report)'])) {
+      db.addQuote(account.id, {
+        quote: clean(row['Research (2025 Report)']),
+        source_name: source,
+        source_date: '2025 report',
+        interpretation: clean(row.Signal) || 'Imported account research signal',
+      });
+    }
+    addImportedAccountBrief(account.id, row, source);
+    briefs++;
+  }
+
+  for (const row of parseTableToObjects(peopleText).records) {
+    const org = clean(row.Organization);
+    const name = clean(row.Name);
+    if (!org || !name) continue;
+    const { account, created: isNew } = ensureAccount({
+      name: org,
+      source,
+      notes: `Imported role research: ${name} — ${clean(row.Role)} (${clean(row.Location)}${clean(row.Country) ? ', ' + clean(row.Country) : ''})`,
+    });
+    isNew ? created++ : updated++;
+    accountIds.add(account.id);
+    classifyAndAddContact(account.id, {
+      name,
+      title: clean(row.Role),
+      persona_level: mapProspectTier(clean(row.Level)) || '',
+      persona_role: clean(row['Job function'] || row.Matched),
+      source: `${source}:role_research`,
+      confidence: 68,
+    });
+    contacts++;
+    const kind = mapSignalKind(row.Matched, row.Role);
+    addSignalOnce(account.id, kind, clean(row.Matched || row['Job function'] || 'Role match'), `${name}: ${clean(row.Role)}. Start date: ${clean(row['Start Date']) || 'unknown'}. Location: ${clean(row.Location)}`, `${source}:role_research`, 78) && signals++;
+  }
+
+  for (const row of parseTableToObjects(outreachText).records) {
+    const name = clean(row.Name);
+    const accountName = clean(row.Account);
+    if (!accountName) continue;
+    const stack = splitList(row['Tech Stack']);
+    const pagerDuty = /pagerduty/i.test(`${row.Signal || ''} ${row['Tech Stack'] || ''}`);
+    const { account, created: isNew } = ensureAccount({
+      name: accountName,
+      source,
+      notes: [clean(row.Angle), clean(row.Signal) ? `Signal: ${clean(row.Signal)}` : '', clean(row['company size']) ? `Company size: ${clean(row['company size'])}` : ''].filter(Boolean).join(' | '),
+      incidentStack: stack.join(', '),
+      pagerDuty,
+    });
+    isNew ? created++ : updated++;
+    accountIds.add(account.id);
+    for (const t of stack) if (addTechOnce(account.id, t, `${source}:outreach_history`, 86)) tech++;
+    addSignalOnce(account.id, 'outreach_history', 'Outreach history imported', `${clean(row.Signal)} ${clean(row.Angle)}`.trim(), `${source}:outreach_history`, 92) && signals++;
+    if (pagerDuty) addSignalOnce(account.id, 'pagerduty_detected', 'PagerDuty in outreach export', clean(row.Signal), `${source}:outreach_history`, 90) && signals++;
+    if (clean(row.incident_account_stage)) addSignalOnce(account.id, 'sales_accepted', clean(row.incident_account_stage), 'Imported incident account stage', `${source}:outreach_history`, 80) && signals++;
+
+    let contact = null;
+    if (name || clean(row.email)) {
+      contact = classifyAndAddContact(account.id, {
+        name,
+        title: clean(row['Prospect tier']),
+        email: clean(row.email),
+        phone: clean(row.number),
+        linkedin: clean(row.linkedin),
+        persona_level: mapProspectTier(row['Prospect tier']),
+        source: `${source}:outreach_history`,
+        confidence: clean(row.email) || clean(row.number) ? 92 : 72,
+      });
+      contacts++;
+      addSignalOnce(account.id, 'call_ready', 'Callable imported contact', `${name} ${clean(row.number) ? 'phone present' : ''} ${clean(row.email) ? 'email present' : ''}`.trim(), `${source}:outreach_history`, 90) && signals++;
+    }
+    const outcome = clean(row.TRELLUS_Last_Call_Outcome);
+    const note = clean(row.TRELLUS_Call_Notes);
+    if ((outcome || note) && contact) {
+      const exists = db.listCallLog(account.id).find((l) => l.contact_id === contact.id && l.outcome === (outcome || 'imported') && clean(l.note) === note);
+      if (!exists) {
+        db.addCallLog(account.id, contact.id, { outcome: outcome || 'imported', note });
+        callLogs++;
+      }
+    }
+    if (/follow up required/i.test(outcome) || note) {
+      db.addTask(account.id, `Follow up with ${name || accountName}: ${note || outcome}`, 'follow_up');
+      tasks++;
+    }
+    if (contact && (clean(row.number) || clean(row.email))) db.updateAccount(account.id, { status: 'ready_to_call' });
+  }
+
+  for (const id of accountIds) rescoreAccount(id);
+  db.audit({
+    action: 'import_research_pack',
+    source,
+    result: `accounts ${accountIds.size}, created ${created}, updated ${updated}, contacts ${contacts}, signals ${signals}, tech ${tech}, call_logs ${callLogs}, tasks ${tasks}, briefs ${briefs}`,
+    confidence: 100,
+  });
+  return { accounts: accountIds.size, created, updated, contacts, signals, tech, callLogs, tasks, briefs, total: db.listAccounts().length };
 }
