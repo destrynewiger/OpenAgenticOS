@@ -4,10 +4,17 @@ import { connect } from '../src/db.js';
 import { importResearchPack } from '../src/importer.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
+const arg = (name, fallback = '') => {
+  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
+  if (hit) return hit.slice(name.length + 3);
+  const i = process.argv.indexOf(`--${name}`);
+  return i >= 0 ? process.argv[i + 1] || fallback : fallback;
+};
+const resolveInput = (value) => value ? (path.isAbsolute(value) ? value : path.join(ROOT, value)) : '';
 const files = {
-  accountResearch: '/Users/alexnewiger/.codex/attachments/a4019531-64cc-4b85-9471-dd9781d25996/pasted-text.txt',
-  people: '/Users/alexnewiger/.codex/attachments/0fd4fc48-8b9f-469a-8378-aebaaee65681/pasted-text.txt',
-  outreach: '/Users/alexnewiger/.codex/attachments/b8e8bc6d-43cf-409e-ba89-6990bc1de693/pasted-text.txt',
+  accountResearch: resolveInput(arg('account-research', process.env.ACCOUNT_RESEARCH_FILE || '')),
+  people: resolveInput(arg('people', process.env.PEOPLE_RESEARCH_FILE || '')),
+  outreach: resolveInput(arg('outreach', process.env.OUTREACH_HISTORY_FILE || '')),
 };
 
 function read(file) {
@@ -16,14 +23,14 @@ function read(file) {
 }
 
 function writeObsidianReceipt(result) {
-  const vault = '/Users/alexnewiger/Library/Mobile Documents/com~apple~CloudDocs/Documents/Obsidian Vault';
+  const vault = resolveInput(arg('receipt-dir', process.env.RESEARCH_PACK_RECEIPT_DIR || ''));
   if (!fs.existsSync(vault)) return null;
-  const file = path.join(vault, '2026-06-15.md');
+  const file = path.join(vault, `${new Date().toISOString().slice(0, 10)}.md`);
   const block = [
     '',
-    '## GTM research pack import',
+    '## OpenAgenticOS research pack import',
     '',
-    '- Imported account research, role/contact research, and Trellus outreach history into the local GTM Command Center.',
+    '- Imported account research, role/contact research, and outreach history into OpenAgenticOS.',
     `- Dashboard repo: ${ROOT}`,
     `- Accounts touched: ${result.accounts}`,
     `- Contacts merged: ${result.contacts}`,
@@ -38,8 +45,16 @@ function writeObsidianReceipt(result) {
     '',
   ].join('\n');
   const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-  if (!existing.includes('## GTM research pack import')) fs.appendFileSync(file, block);
+  if (!existing.includes('## OpenAgenticOS research pack import')) fs.appendFileSync(file, block);
   return file;
+}
+
+for (const [label, file] of Object.entries(files)) {
+  if (!file) {
+    console.error(`Missing --${label.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}=<path>`);
+    console.error('Usage: npm run import:research-pack -- --account-research path.txt --people path.txt --outreach path.txt');
+    process.exit(1);
+  }
 }
 
 connect();

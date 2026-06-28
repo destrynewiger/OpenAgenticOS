@@ -4,13 +4,14 @@ import { DATA_DIR, getConfig } from '../config.js';
 import { googleAdcStatus, hasGoogleAdcConfig } from './googleAuth.js';
 
 const KEY_FILE = process.env.PROVIDER_KEYS_FILE || path.join(DATA_DIR, 'provider-keys.json');
-const PROVIDERS = new Set(['sumble', 'commonRoom', 'gemini', 'amplemarket']);
+const PROVIDERS = new Set(['sumble', 'commonRoom', 'gemini', 'amplemarket', 'apollo']);
 
 const ENV_KEYS = {
   sumble: (cfg) => cfg.sumble?.apiKey || '',
   commonRoom: (cfg) => cfg.commonRoom?.apiKey || '',
   gemini: (cfg) => cfg.llm?.geminiKey || cfg.llm?.googleKey || '',
   amplemarket: (cfg) => cfg.amplemarketKey || '',
+  apollo: (cfg) => cfg.apolloKey || '',
 };
 
 function readStore() {

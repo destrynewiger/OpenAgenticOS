@@ -6,6 +6,7 @@ import { researchWithSumble } from './sumble.js';
 import { researchWithCommonRoom } from './commonRoom.js';
 import { summarizeWithGemini } from './gemini.js';
 import { researchWithAmplemarket } from './amplemarket.js';
+import { syncBriefToCrm } from '../notesSync.js';
 
 function logResearch(event, payload = {}) {
   const safe = { ...payload };
@@ -190,7 +191,7 @@ export async function generateProviderAccountBrief(accountId, { cfg = getConfig(
   for (const p of results.find((r) => r.provider === 'amplemarket')?.data?.people || []) {
     classifyAndAddContact(accountId, {
       name: p.name, title: p.title, email: p.email, phone: p.phone, linkedin: p.linkedin,
-      source: 'amplemarket', confidence: 82,
+      location: p.location || '', source: 'amplemarket', confidence: 82,
     });
   }
   for (const s of results.find((r) => r.provider === 'amplemarket')?.data?.signals || []) {
@@ -221,5 +222,8 @@ export async function generateProviderAccountBrief(accountId, { cfg = getConfig(
     result: saved.provider_status.map((s) => `${s.provider}:${s.status}`).join(', '),
     confidence: 80,
   });
+  // Push the brief into Apollo + Amplemarket account notes (dry-run unless flags are ON).
+  try { await syncBriefToCrm(accountId, { cfg, brief: saved, fetchFn }); }
+  catch (e) { db.audit({ account_id: accountId, action: 'sync_brief_to_crm', source: 'system', result: 'failed', error: e.message }); }
   return saved;
 }

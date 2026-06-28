@@ -124,8 +124,8 @@ export function bestWhyNow(account, signals) {
 export function sequenceDisposition(account, signals) {
   if (account.rootly_customer === 'yes') return 'skip: confirmed customer';
   const activeTool = signals.find((s) =>
-    (s.kind === 'apollo_presence' || s.kind === 'amplemarket_presence') &&
-    /active|sequence|last contacted|removed from/i.test(`${s.label} ${s.detail}`));
+    (s.kind === 'amplemarket_activity' || s.kind === 'apollo_presence' || s.kind === 'amplemarket_presence') &&
+    /active|sequence|last.?contact|removed from/i.test(`${s.label} ${s.detail}`));
   if (activeTool) return 'call today; review active sequence before adding to another sequence';
   if (account.status === 'ready_to_sequence') return 'sequence-ready; export ok';
   if (account.status === 'ready_to_call') return 'call-first; export for review only';

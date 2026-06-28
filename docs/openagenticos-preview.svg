@@ -1,0 +1,54 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">OpenAgenticOS dashboard preview</title>
+  <desc id="desc">A dark local-first dashboard preview with agent tiles, memory, council, and workflow panels.</desc>
+  <rect width="1200" height="720" fill="#0b1020"/>
+  <rect x="32" y="28" width="1136" height="664" rx="18" fill="#10182e" stroke="#283451"/>
+  <text x="64" y="82" fill="#f8fafc" font-family="Inter,Arial,sans-serif" font-size="34" font-weight="700">OpenAgenticOS</text>
+  <text x="64" y="112" fill="#94a3b8" font-family="Inter,Arial,sans-serif" font-size="16">Memory · agents · council · local workflows</text>
+  <g transform="translate(64 148)">
+    <rect width="236" height="500" rx="14" fill="#0f172a" stroke="#26324d"/>
+    <text x="24" y="42" fill="#cbd5e1" font-family="Inter,Arial,sans-serif" font-size="15" font-weight="700">Agent Tiles</text>
+    <g font-family="Inter,Arial,sans-serif" font-size="14" font-weight="700">
+      <rect x="20" y="66" width="196" height="54" rx="10" fill="#312e16" stroke="#b45309"/><text x="40" y="99" fill="#fde68a">Council</text>
+      <rect x="20" y="134" width="196" height="54" rx="10" fill="#123229" stroke="#10b981"/><text x="40" y="167" fill="#bbf7d0">Free Claude Code</text>
+      <rect x="20" y="202" width="196" height="54" rx="10" fill="#1e1b4b" stroke="#8b5cf6"/><text x="40" y="235" fill="#ddd6fe">N2 Agent</text>
+      <rect x="20" y="270" width="196" height="54" rx="10" fill="#172554" stroke="#60a5fa"/><text x="40" y="303" fill="#bfdbfe">Hermes</text>
+      <rect x="20" y="338" width="196" height="54" rx="10" fill="#3b1230" stroke="#ec4899"/><text x="40" y="371" fill="#fbcfe8">OpenClaw</text>
+      <rect x="20" y="406" width="196" height="54" rx="10" fill="#132f3a" stroke="#14b8a6"/><text x="40" y="439" fill="#ccfbf1">Memory</text>
+    </g>
+  </g>
+  <g transform="translate(330 148)">
+    <rect width="520" height="500" rx="14" fill="#0f172a" stroke="#26324d"/>
+    <text x="28" y="46" fill="#f8fafc" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="700">Agent Council</text>
+    <text x="28" y="76" fill="#94a3b8" font-family="Inter,Arial,sans-serif" font-size="14">Paste an idea. Each agent returns a grounded angle.</text>
+    <rect x="28" y="108" width="464" height="112" rx="12" fill="#111c33" stroke="#334155"/>
+    <text x="48" y="146" fill="#cbd5e1" font-family="Inter,Arial,sans-serif" font-size="15">How should we launch this workflow safely?</text>
+    <rect x="28" y="252" width="218" height="86" rx="12" fill="#172033" stroke="#334155"/>
+    <text x="48" y="286" fill="#f8fafc" font-family="Inter,Arial,sans-serif" font-size="15" font-weight="700">Memory</text>
+    <text x="48" y="312" fill="#94a3b8" font-family="Inter,Arial,sans-serif" font-size="13">Grounds the idea in local context.</text>
+    <rect x="274" y="252" width="218" height="86" rx="12" fill="#172033" stroke="#334155"/>
+    <text x="294" y="286" fill="#f8fafc" font-family="Inter,Arial,sans-serif" font-size="15" font-weight="700">Claude Code</text>
+    <text x="294" y="312" fill="#94a3b8" font-family="Inter,Arial,sans-serif" font-size="13">Scopes implementation and tests.</text>
+    <rect x="28" y="364" width="218" height="86" rx="12" fill="#172033" stroke="#334155"/>
+    <text x="48" y="398" fill="#f8fafc" font-family="Inter,Arial,sans-serif" font-size="15" font-weight="700">OpenClaw</text>
+    <text x="48" y="424" fill="#94a3b8" font-family="Inter,Arial,sans-serif" font-size="13">Checks browser/computer execution.</text>
+    <rect x="274" y="364" width="218" height="86" rx="12" fill="#172033" stroke="#334155"/>
+    <text x="294" y="398" fill="#f8fafc" font-family="Inter,Arial,sans-serif" font-size="15" font-weight="700">N2</text>
+    <text x="294" y="424" fill="#94a3b8" font-family="Inter,Arial,sans-serif" font-size="13">Pressure-tests assumptions.</text>
+  </g>
+  <g transform="translate(880 148)">
+    <rect width="252" height="500" rx="14" fill="#0f172a" stroke="#26324d"/>
+    <text x="24" y="44" fill="#f8fafc" font-family="Inter,Arial,sans-serif" font-size="22" font-weight="700">Local Status</text>
+    <g font-family="Inter,Arial,sans-serif" font-size="14">
+      <circle cx="32" cy="88" r="6" fill="#22c55e"/><text x="50" y="93" fill="#cbd5e1">Loopback server</text>
+      <circle cx="32" cy="126" r="6" fill="#f59e0b"/><text x="50" y="131" fill="#cbd5e1">Bring your own keys</text>
+      <circle cx="32" cy="164" r="6" fill="#22c55e"/><text x="50" y="169" fill="#cbd5e1">SQLite memory</text>
+      <circle cx="32" cy="202" r="6" fill="#38bdf8"/><text x="50" y="207" fill="#cbd5e1">Optional CLIs</text>
+    </g>
+    <rect x="24" y="258" width="204" height="160" rx="12" fill="#111c33" stroke="#334155"/>
+    <text x="44" y="292" fill="#f8fafc" font-family="Inter,Arial,sans-serif" font-size="16" font-weight="700">Safe Defaults</text>
+    <text x="44" y="326" fill="#94a3b8" font-family="Inter,Arial,sans-serif" font-size="13">External pushes off</text>
+    <text x="44" y="352" fill="#94a3b8" font-family="Inter,Arial,sans-serif" font-size="13">Private data ignored</text>
+    <text x="44" y="378" fill="#94a3b8" font-family="Inter,Arial,sans-serif" font-size="13">Privileged routes guarded</text>
+  </g>
+</svg>

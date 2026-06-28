@@ -140,10 +140,10 @@ export function listAccounts(filter = {}) {
 export function addContact(accountId, c) {
   const ts = nowIso();
   const { id } = run(
-    `INSERT INTO contacts (account_id, name, title, email, phone, linkedin,
+    `INSERT INTO contacts (account_id, name, title, email, phone, linkedin, location,
        persona_level, persona_role, source, confidence, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [accountId, c.name || '', c.title || '', c.email || '', c.phone || '', c.linkedin || '',
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [accountId, c.name || '', c.title || '', c.email || '', c.phone || '', c.linkedin || '', c.location || '',
      c.persona_level || '', c.persona_role || '', c.source || '', c.confidence ?? 50, ts, ts],
   );
   return getContact(id);
@@ -158,7 +158,7 @@ export function listAllContacts() {
               ORDER BY a.score DESC, c.confidence DESC`);
 }
 export function updateContact(id, patch) {
-  const allowed = ['name', 'title', 'email', 'phone', 'linkedin', 'persona_level', 'persona_role', 'source', 'confidence'];
+  const allowed = ['name', 'title', 'email', 'phone', 'linkedin', 'location', 'persona_level', 'persona_role', 'source', 'confidence'];
   const cols = [], args = [];
   for (const k of allowed) if (k in patch) { cols.push(`${k} = ?`); args.push(patch[k]); }
   if (!cols.length) return getContact(id);
@@ -175,11 +175,98 @@ export function upsertContact(accountId, c) {
   );
   if (existing) {
     const patch = {};
-    for (const f of ['email', 'phone', 'linkedin']) if (!existing[f] && c[f]) patch[f] = c[f];
+    for (const f of ['email', 'phone', 'linkedin', 'location']) if (!existing[f] && c[f]) patch[f] = c[f];
     if (Object.keys(patch).length) return updateContact(existing.id, patch);
     return existing;
   }
   return addContact(accountId, c);
+}
+
+// CRM deal-role labels that ride in on the outreach-history import as a
+// contact "title" — not real job titles, so a row carrying one loses the
+// survivor pick to a row with a descriptive title (e.g. "VP of Engineering").
+const GENERIC_TITLES = new Set(['', 'buyer', 'champion', 'end user']);
+const isGenericTitle = (t) => GENERIC_TITLES.has(String(t || '').trim().toLowerCase());
+
+// One-off cleanup for dups that predate upsertContact's title-aware guard
+// (or slipped past it via differing title strings, e.g. "VP of Engineering"
+// vs "Buyer"). Collapses contacts sharing a normalized name within an account
+// into a single survivor: the row with the most descriptive title (a real
+// title beats a generic deal-role label; confidence then id break ties).
+// Backfills the survivor's blank email/phone/linkedin/location from the rest,
+// repoints call_queue/call_log, deletes the others.
+// Dry-run by default — pass { apply: true } to write. Returns a report.
+// Note: call_notes/research_briefs on the deleted rows cascade away (the
+// survivor keeps its own); the report counts them so the loss isn't silent.
+export function dedupeContacts({ apply = false } = {}) {
+  const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const rows = all(`SELECT * FROM contacts`);
+  const groups = new Map();
+  for (const r of rows) {
+    const key = norm(r.name);
+    if (!key) continue; // can't dedupe nameless rows
+    const gk = `${r.account_id} ${key}`;
+    if (!groups.has(gk)) groups.set(gk, []);
+    groups.get(gk).push(r);
+  }
+
+  // Survivor first: descriptive title over generic, then higher confidence, then lower id.
+  const pickOrder = (a, b) =>
+    (isGenericTitle(a.title) - isGenericTitle(b.title)) ||
+    (b.confidence - a.confidence) ||
+    (a.id - b.id);
+
+  const merges = [];
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    list.sort(pickOrder);
+    const keep = list[0];
+    const rest = list.slice(1);
+    const deleteIds = rest.map((r) => r.id);
+    const patch = {};
+    for (const f of ['email', 'phone', 'linkedin', 'location']) {
+      if (String(keep[f] || '').trim()) continue;
+      const donor = rest.find((r) => String(r[f] || '').trim());
+      if (donor) patch[f] = donor[f];
+    }
+    merges.push({ account_id: keep.account_id, name: keep.name, keepId: keep.id, keepTitle: keep.title, deleteIds, patch });
+  }
+
+  const losers = merges.flatMap((m) => m.deleteIds);
+  const countRefs = (tbl) => losers.length
+    ? Number(get(`SELECT COUNT(*) c FROM ${tbl} WHERE contact_id IN (${losers.map(() => '?').join(',')})`, losers)?.c ?? 0)
+    : 0;
+  const report = {
+    applied: apply,
+    groups: merges.length,
+    contactsDeleted: losers.length,
+    fieldsBackfilled: merges.reduce((n, m) => n + Object.keys(m.patch).length, 0),
+    queueRepointed: countRefs('call_queue'),
+    logRepointed: countRefs('call_log'),
+    callNotesDropped: countRefs('call_notes'),
+    researchBriefsDropped: countRefs('research_briefs'),
+    merges,
+  };
+  if (!apply || !merges.length) return report;
+
+  const dbh = getDb();
+  dbh.exec('BEGIN');
+  try {
+    for (const m of merges) {
+      if (Object.keys(m.patch).length) updateContact(m.keepId, m.patch);
+      for (const lid of m.deleteIds) {
+        // Repoint BEFORE delete: call_queue cascades on contact delete (FKs on).
+        run(`UPDATE call_queue SET contact_id = ?, updated_at = ? WHERE contact_id = ?`, [m.keepId, nowIso(), lid]);
+        run(`UPDATE call_log SET contact_id = ? WHERE contact_id = ?`, [m.keepId, lid]);
+      }
+      run(`DELETE FROM contacts WHERE id IN (${m.deleteIds.map(() => '?').join(',')})`, m.deleteIds);
+    }
+    dbh.exec('COMMIT');
+  } catch (e) {
+    dbh.exec('ROLLBACK');
+    throw e;
+  }
+  return report;
 }
 
 // ---------------- signals ----------------
@@ -589,5 +676,43 @@ export function getAccountBundle(id) {
     exports: listAccountExports(id),
     latestExports: latestAccountExports(id),
     audit: listAudit(id, 50),
+  };
+}
+
+// ---------- Trellus dialer sessions (read-only mirror, written by scripts/sync-trellus.mjs) ----------
+
+// Upsert one session keyed by session_id. Idempotent — re-syncing overwrites.
+export function upsertTrellusSession(s) {
+  run(
+    `INSERT INTO trellus_sessions
+       (session_id, started_at, started_unix, direction, duration_sec, sip_code,
+        customer_name, company_name, customer_phone, agent_phone, disposition, sentiment, purpose, synced_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(session_id) DO UPDATE SET
+       started_at=excluded.started_at, started_unix=excluded.started_unix, direction=excluded.direction,
+       duration_sec=excluded.duration_sec, sip_code=excluded.sip_code, customer_name=excluded.customer_name,
+       company_name=excluded.company_name, customer_phone=excluded.customer_phone, agent_phone=excluded.agent_phone,
+       disposition=excluded.disposition, sentiment=excluded.sentiment, purpose=excluded.purpose, synced_at=excluded.synced_at`,
+    [s.session_id, s.started_at, s.started_unix, s.direction, s.duration_sec, s.sip_code,
+     s.customer_name, s.company_name, s.customer_phone, s.agent_phone, s.disposition, s.sentiment, s.purpose, nowIso()],
+  );
+}
+
+export function listTrellusSessions(limit = 100) {
+  return all(`SELECT * FROM trellus_sessions ORDER BY started_unix DESC LIMIT ?`, [Math.min(Number(limit) || 100, 500)]);
+}
+
+export function trellusSummary() {
+  const c = (sql, args = []) => Number(get(sql, args)?.c ?? 0);
+  const total = c(`SELECT COUNT(*) c FROM trellus_sessions`);
+  const since = Math.floor(Date.now() / 1000) - 7 * 86400;
+  return {
+    total,
+    last7d: c(`SELECT COUNT(*) c FROM trellus_sessions WHERE started_unix >= ?`, [since]),
+    connected: c(`SELECT COUNT(*) c FROM trellus_sessions WHERE duration_sec > 0`),
+    latestSync: get(`SELECT MAX(synced_at) v FROM trellus_sessions`)?.v || null,
+    latestCall: get(`SELECT MAX(started_at) v FROM trellus_sessions`)?.v || null,
+    byDisposition: all(`SELECT COALESCE(NULLIF(disposition,''),'(none)') k, COUNT(*) c FROM trellus_sessions GROUP BY k ORDER BY c DESC`)
+      .map((r) => ({ disposition: r.k, count: Number(r.c) })),
   };
 }

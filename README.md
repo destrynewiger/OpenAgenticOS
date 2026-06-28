@@ -4,6 +4,8 @@ A local-first agent operating dashboard for memory, tool status, council deliber
 
 It is built as a zero-dependency Node/SQLite app with a vanilla JavaScript dashboard. The app is designed to run on your machine, keep data local by default, and expose honest setup states for optional agent tools.
 
+![OpenAgenticOS dashboard preview](docs/openagenticos-preview.svg)
+
 ## What It Includes
 
 - **Agent OS dashboard** with separate tiles for Memory, Free Claude Code, Hermes, OpenClaw, N2, and other optional tools.
@@ -28,21 +30,20 @@ The app uses Node's experimental SQLite support, so commands include `--experime
 ```sh
 git clone <your-repo-url>
 cd OpenAgenticOS
-cp .env.example .env
-npm run seed:demo
+npm run bootstrap
 npm start
 ```
 
 Open:
 
 ```text
-http://localhost:4100
+http://127.0.0.1:4100
 ```
 
 Agent OS:
 
 ```text
-http://localhost:4100/#/agent-os/council
+http://127.0.0.1:4100/#/agent-os/council
 ```
 
 ## Demo Data
@@ -109,6 +110,15 @@ ENABLE_AMPLEMARKET_PUSH=false
 
 Keep these off for local-only use. The app is designed to prepare data and exports without pushing externally unless you explicitly opt in.
 
+Network defaults:
+
+```env
+HOST=127.0.0.1
+OPS_TOKEN=
+```
+
+The server binds to loopback by default. If you expose it with `HOST=0.0.0.0`, set a long random `OPS_TOKEN`; privileged local-run endpoints require loopback or `X-Ops-Token`.
+
 ## Tests
 
 ```sh
@@ -118,7 +128,7 @@ npm test
 Expected current baseline:
 
 ```text
-69 passing tests
+77 passing tests
 ```
 
 ## Publishing Safety
@@ -141,6 +151,10 @@ Do not commit:
 
 The included `.gitignore` excludes these by default.
 
+## Security
+
+See [SECURITY.md](SECURITY.md). The short version: keep it local by default, do not commit runtime data, and only expose the server on a network when you have set `OPS_TOKEN`.
+
 ## Project Layout
 
 ```text
@@ -157,4 +171,4 @@ test/                  Node test suite
 
 ## License
 
-No license has been selected yet. Add one before encouraging broad reuse.
+MIT. See [LICENSE](LICENSE).

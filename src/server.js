@@ -25,9 +25,12 @@ import { buildApolloCsv, buildAmplemarketCsv, writeExport } from './exporter.js'
 import { llmAvailable } from './llm.js';
 import { buildQueue, getQueue } from './callQueue.js';
 import { cockpitForQuery, cockpitForContactId, logOutcome } from './cockpit.js';
+import { recordReplyWebhook } from './reply.js';
+import { matchAccount, networkSummary } from './knowledge/network.js';
 import { syncDialSheet } from './integrations/googleSheet.js';
 import { runMonitor } from './jobs/sumbleMonitor.js';
 import { buildGraph } from './graph.js';
+import { corsOriginFor, isPrivileged } from './security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DASH_DIR = path.join(__dirname, 'dashboard');
@@ -86,6 +89,12 @@ function match(pattern, pathname) {
   return params;
 }
 const idsFrom = (v) => String(v || '').split(',').map((s) => Number(s.trim())).filter(Boolean);
+
+function denyUnprivileged(req, res) {
+  if (isPrivileged(req)) return false;
+  json(res, 403, { error: 'forbidden: privileged endpoint (loopback or X-Ops-Token required)' });
+  return true;
+}
 
 function commandExists(name) {
   try {
@@ -1095,18 +1104,6 @@ function startHermesDashboard() {
   return { command: `${bin} dashboard --no-open --skip-build`, pid: child.pid };
 }
 
-// CORS for the cockpit. The Chrome extension calls the read-only cockpit
-// endpoints cross-origin (its origin is chrome-extension://<id>). Those GET
-// endpoints expose only brief/call-prep data, so they are safe to share with
-// `*`. Everything else stays same-origin unless an operator allowlists an
-// origin via COCKPIT_ALLOWED_ORIGINS (comma-separated, or `*` for all).
-function corsOriginFor(pathname, origin) {
-  const allow = String(process.env.COCKPIT_ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (allow.includes('*')) return '*';
-  if (origin && allow.includes(origin)) return origin;
-  if (pathname.startsWith('/api/cockpit') || pathname === '/cockpit') return '*';
-  return null;
-}
 const filterFromQuery = (q) => ({
   band: q.get('band') || undefined,
   status: q.get('status') || undefined,
@@ -1122,6 +1119,24 @@ const filterFromQuery = (q) => ({
 // ================= API =================
 route('GET', '/api/health', (req, res) => json(res, 200, { ok: true }));
 
+// Amplemarket reply webhook → triage through the reply-gate. Point your Amplemarket
+// "Replies" webhook here (exposed via `tailscale serve`). Responds 200 fast.
+route('POST', '/api/amplemarket/replies-webhook', async (req, res, { body, query }) => {
+  // Shared-secret auth — Amplemarket doesn't sign webhooks, and this endpoint is
+  // public once exposed. Require WEBHOOK_TOKEN via ?token= or x-webhook-token header.
+  const want = process.env.WEBHOOK_TOKEN || '';
+  if (want) {
+    const got = query.get('token') || req.headers['x-webhook-token'] || '';
+    if (got !== want) return json(res, 401, { ok: false, error: 'unauthorized' });
+  }
+  try {
+    const row = await recordReplyWebhook(body);
+    json(res, 200, { ok: true, action: row.action || 'skipped', reason: row.reason || row.skipped || '' });
+  } catch (e) {
+    json(res, 200, { ok: false, error: e.message }); // 200 so Amplemarket doesn't retry-storm
+  }
+});
+
 route('GET', '/api/config', (req, res) => json(res, 200, {
   seller: cfg.seller,
   flags: cfg.flags,
@@ -1135,6 +1150,12 @@ route('GET', '/api/config', (req, res) => json(res, 200, {
 }));
 
 route('GET', '/api/stats', (req, res) => json(res, 200, db.stats()));
+
+// Trellus dialer sessions (synced by scripts/sync-trellus.mjs).
+route('GET', '/api/trellus', (req, res, { query }) => json(res, 200, {
+  summary: db.trellusSummary(),
+  sessions: db.listTrellusSessions(Number(query.get('limit')) || 100),
+}));
 
 // Combined homepage payload.
 route('GET', '/api/home', (req, res) => {
@@ -1214,6 +1235,7 @@ route('GET', '/api/agent-os/surfaces/:agent', async (req, res, { params }) => {
 });
 // Start a local agent surface (Hermes only; spawns the real dashboard detached).
 route('POST', '/api/agent-os/surfaces/:agent/start', async (req, res, { params }) => {
+  if (denyUnprivileged(req, res)) return;
   if (params.agent !== 'hermes') return json(res, 400, { error: 'start is only supported for Hermes' });
   try {
     const started = startHermesDashboard();
@@ -1228,6 +1250,7 @@ route('POST', '/api/agent-os/surfaces/:agent/start', async (req, res, { params }
 // assistant text like the TUI. Passing `sessionId` resumes that conversation, so
 // the panel is multi-turn. The prompt is fed on stdin.
 route('POST', '/api/agent-os/claude-code/run', async (req, res, { body }) => {
+  if (denyUnprivileged(req, res)) return;
   const prompt = String(body.prompt || '').trim();
   if (!prompt) return json(res, 400, { error: 'prompt is required' });
   if (prompt.length > 16000) return json(res, 400, { error: 'prompt too long (max 16000 chars)' });
@@ -1250,6 +1273,7 @@ route('POST', '/api/agent-os/claude-code/run', async (req, res, { body }) => {
 // streamed back. `yolo` auto-approves all tools (full power); otherwise the CLI
 // runs in default (read-mostly) mode. `resume` continues the latest session.
 route('POST', '/api/agent-os/gemini/run', async (req, res, { body }) => {
+  if (denyUnprivileged(req, res)) return;
   const prompt = String(body.prompt || '').trim();
   if (!prompt) return json(res, 400, { error: 'prompt is required' });
   if (prompt.length > 16000) return json(res, 400, { error: 'prompt too long (max 16000 chars)' });
@@ -1379,7 +1403,23 @@ route('GET', '/api/planned-outreach', (req, res) => json(res, 200, svc.plannedOu
 route('GET', '/api/accounts/:id', (req, res, { params }) => {
   const d = svc.detailView(Number(params.id));
   if (!d) return json(res, 404, { error: 'not found' });
+  d.warmNetwork = matchAccount(d.account); // who you already know here, from the brain
   json(res, 200, d);
+});
+
+// Personal network (brain) joined to the pipeline — who you know + which accounts.
+route('GET', '/api/network', (req, res) => {
+  const { people, byStatus, count, vault } = networkSummary();
+  const accounts = db.listAccounts();
+  const reEsc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const people2 = people.map((p) => {
+    const hay = `${p.company} ${p.text}`.toLowerCase();
+    const accts = accounts
+      .filter((a) => String(a.name || '').length >= 3 && new RegExp(`\\b${reEsc(String(a.name).toLowerCase())}\\b`).test(hay))
+      .slice(0, 3).map((a) => ({ id: a.id, name: a.name, score: a.score, band: a.band }));
+    return { ...p, accounts: accts };
+  });
+  json(res, 200, { count, byStatus, vault, people: people2 });
 });
 
 route('POST', '/api/accounts', async (req, res, { body }) => {
@@ -1518,6 +1558,7 @@ route('GET', '/api/audit', (req, res, { query }) => json(res, 200, db.listAudit(
 route('GET', '/api/exports', (req, res) => json(res, 200, db.listExports()));
 
 route('POST', '/api/import', async (req, res, { body }) => {
+  if (denyUnprivileged(req, res)) return;
   let text = body.csv;
   if (!text && body.path) {
     if (!fs.existsSync(body.path)) return json(res, 400, { error: 'file not found: ' + body.path });
@@ -1580,12 +1621,14 @@ const server = http.createServer(async (req, res) => {
     }
     send(res, 404, { error: 'not found', path: pathname });
   } catch (e) {
-    send(res, 500, { error: e.message, stack: e.stack });
+    console.error('[server] unhandled', e);
+    send(res, 500, { error: 'internal error' });
   }
 });
 
-server.listen(cfg.port, () => {
-  console.log(`\n  OpenAgenticOS → http://localhost:${cfg.port}`);
+server.listen(cfg.port, cfg.host, () => {
+  const displayHost = cfg.host === '0.0.0.0' || cfg.host === '::' ? 'localhost' : cfg.host;
+  console.log(`\n  OpenAgenticOS → http://${displayHost}:${cfg.port}`);
   console.log(`  research: ${cfg.flags.browserResearch ? 'LIVE web/provider' : 'local/offline (safe)'} | call notes: ${llmAvailable(cfg) ? 'LLM-enhanced' : 'templates'} | pushes: ${cfg.flags.apolloPush || cfg.flags.amplemarketPush ? 'ENABLED' : 'CSV-only'}`);
   console.log('');
 });

@@ -88,6 +88,12 @@ export async function syncDialSheet({ cfg = getConfig() } = {}) {
 
   const token = await accessToken(creds);
   const tab = cfg.sheets.tab;
+  // A fresh sheet's only tab is "Sheet1" — create our tab if it isn't there yet.
+  const meta = await sheetsApi(token, `${cfg.sheets.sheetId}?fields=sheets.properties.title`);
+  const titles = (meta.sheets || []).map((s) => s.properties.title);
+  if (!titles.includes(tab)) {
+    await sheetsApi(token, `${cfg.sheets.sheetId}:batchUpdate`, { method: 'POST', body: { requests: [{ addSheet: { properties: { title: tab } } }] } });
+  }
   await sheetsApi(token, `${cfg.sheets.sheetId}/values/${encodeURIComponent(tab)}:clear`, { method: 'POST', body: {} });
   await sheetsApi(token, `${cfg.sheets.sheetId}/values/${encodeURIComponent(`${tab}!A1`)}?valueInputOption=RAW`, {
     method: 'PUT', body: { values },

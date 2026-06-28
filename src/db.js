@@ -22,7 +22,14 @@ export function connect(file) {
   _db.exec('PRAGMA foreign_keys = ON;');
   if (target !== ':memory:') _db.exec('PRAGMA journal_mode = WAL;');
   _db.exec(SCHEMA);
+  migrate(_db);
   return _db;
+}
+
+// Idempotent column adds for DBs created before a field existed.
+function migrate(db) {
+  const cols = db.prepare(`PRAGMA table_info(contacts)`).all().map((r) => r.name);
+  if (!cols.includes('location')) db.exec(`ALTER TABLE contacts ADD COLUMN location TEXT DEFAULT ''`);
 }
 
 export function getDb() {

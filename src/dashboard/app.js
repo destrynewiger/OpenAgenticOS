@@ -52,10 +52,12 @@ async function render() {
     if (hash === '/') return await renderHome();
     if (hash === '/map') return await renderMap();
     if (hash === '/queue') return await renderQueue();
+    if (hash === '/calls') return await renderCalls();
     if (hash === '/planned') return await renderPlannedOutreach();
     if (hash === '/accounts') return await renderAccounts();
     if (hash.startsWith('/account/')) return await renderAccount(hash.split('/')[2]);
     if (hash === '/contacts') return await renderContacts();
+    if (hash === '/network') return await renderNetwork();
     if (hash === '/signals') return await renderSignals();
     if (hash === '/exports') return await renderExports();
     if (hash === '/closeout') return await renderCloseout();
@@ -412,9 +414,14 @@ async function renderAccount(id) {
   const callcards = d.callNotes.length ? d.callNotes.map((n) => callcardHtml(n, d.contacts, a.id)).join('')
     : '<div class="empty compact">No call card yet. Generate call notes when contacts are mapped.</div>';
   const signalList = safeArray(d.signals).filter((s) => s.kind !== 'missing_data');
+  const warm = safeArray(d.warmNetwork);
+  const warmHtml = warm.length
+    ? `<div class="warm-net"><b>Warm network</b> — you already know ${warm.length} here: ${warm.map((p) => `${esc(p.name)} <span class="muted">(${esc(netLabel(p.status))}${p.text ? ' — ' + esc(p.text.slice(0, 70)) : ''})</span>`).join(' · ')}</div>`
+    : '';
 
   view.innerHTML = `
     <a class="back-link" href="#/accounts">Accounts</a>
+    ${warmHtml}
     <div class="account-profile-layout">
       <aside class="profile-panel">
         <div class="profile-company">
@@ -2112,6 +2119,43 @@ async function renderQueue() {
     <table class="queue"><thead><tr><th>#</th><th>Score</th><th>Account</th><th>Contact</th><th>Reach</th><th>Why now</th><th>Status</th><th>Set</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="8" class="empty">Queue empty. Click “Rebuild queue” once accounts have callable contacts (phone + top band).</td></tr>'}</tbody></table>`;
 }
+
+// Trellus dialer sessions, synced from the Trellus API into trellus_sessions.
+async function renderCalls() {
+  const { summary, sessions } = await api('/trellus');
+  const dispoTone = (d) => /positive|meeting|interested(?!.*not)/i.test(d) ? 'green'
+    : /no answer|wrong|voicemail|left vm|\(none\)/i.test(d) ? 'gray'
+    : /not interested|bad/i.test(d) ? 'red' : 'yellow';
+  const dur = (s) => { const t = Math.round(Number(s) || 0); return t ? `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}` : '—'; };
+  const stat = (label, val) => `<div class="stat"><div class="stat-val">${esc(val)}</div><div class="stat-label">${esc(label)}</div></div>`;
+  const dispoChips = summary.byDisposition.map((d) => `${badge(`${d.disposition} · ${d.count}`, dispoTone(d.disposition))}`).join(' ');
+
+  const rows = sessions.map((s) => `<tr>
+    <td>${esc(shortDate(s.started_at))}</td>
+    <td>${badge(s.direction, s.direction === 'inbound' ? 'blue' : 'gray')}</td>
+    <td><b>${esc(s.customer_name || '—')}</b><br><span class="muted">${esc(s.company_name || '')}</span></td>
+    <td>${esc(s.customer_phone || '')}</td>
+    <td>${dur(s.duration_sec)}</td>
+    <td>${s.disposition ? badge(s.disposition, dispoTone(s.disposition)) : '<span class="muted">—</span>'}</td>
+    <td>${esc(s.sentiment || '')}</td>
+    <td>${esc(s.purpose || '')}</td>
+  </tr>`).join('');
+
+  view.innerHTML = `
+    <div class="toolbar">
+      <span class="muted">Last sync: ${esc(shortDate(summary.latestSync) || 'never')} · latest call: ${esc(shortDate(summary.latestCall) || '—')}</span>
+      <span class="spacer"></span>
+      <span class="muted">Run <code>npm run sync:trellus</code> to refresh</span>
+    </div>
+    <h2>Calls <span class="muted">(Trellus)</span></h2>
+    <p class="muted">Dialer sessions synced from Trellus — disposition, sentiment, and duration per call. Read-only mirror; the source of truth is Trellus.</p>
+    <div class="stat-row" style="display:flex;gap:16px;flex-wrap:wrap;margin:12px 0">
+      ${stat('Total calls', summary.total)}${stat('Last 7 days', summary.last7d)}${stat('Connected', summary.connected)}
+    </div>
+    <div style="margin:8px 0 16px">${dispoChips}</div>
+    <table class="queue"><thead><tr><th>When</th><th>Dir</th><th>Contact</th><th>Phone</th><th>Dur</th><th>Disposition</th><th>Sentiment</th><th>Purpose</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="8" class="empty">No sessions yet. Run <code>npm run sync:trellus</code>.</td></tr>'}</tbody></table>`;
+}
 window.rebuildQueue = async () => { busy(true); try { const r = await api('/queue/rebuild', 'POST', {}); toast(`Queued ${r.queued} contacts from ${r.accounts} accounts`); render(); } catch (e) { toast(e.message, true); } busy(false); };
 window.setQueueStatus = async (id, status) => { try { await api(`/queue/${id}/status`, 'POST', { status }); toast('Status updated'); } catch (e) { toast(e.message, true); } };
 window.syncSheet = async () => { busy(true); try { const r = await api('/sheet/sync', 'POST', {}); toast(r.message || `Synced ${r.count || 0} rows`); } catch (e) { toast(e.message, true); } busy(false); };
@@ -2328,17 +2372,55 @@ function startGraph(data) {
 }
 
 // ---------- CONTACTS ----------
+let _contacts = [];
+let _cSort = '';
 async function renderContacts() {
-  const list = await api('/contacts');
-  const rows = list.map((c) => `<tr class="clickable" onclick="location.hash='#/account/${c.account_id}'">
+  _contacts = await api('/contacts');
+  view.innerHTML = `<h2>All contacts (<span id="cCount">${_contacts.length}</span>)</h2>
+    <div class="toolbar"><input id="cFilter" placeholder="Filter by location / name / account…" oninput="window._drawContacts()" style="min-width:300px"></div>
+    <table><thead><tr>
+      <th>Name</th><th>Title</th><th>Persona</th><th>Account</th>
+      <th class="clickable" style="cursor:pointer" onclick="window._sortContacts('location')" title="Sort by location">Location ⇅</th>
+      <th>Email</th><th>Phone</th><th>LinkedIn</th><th>Conf</th><th>Source</th>
+    </tr></thead><tbody id="cBody"></tbody></table>`;
+  drawContacts();
+}
+function drawContacts() {
+  const q = (document.getElementById('cFilter')?.value || '').toLowerCase();
+  let list = _contacts.filter((c) => !q || `${c.name} ${c.account_name} ${c.location || ''}`.toLowerCase().includes(q));
+  if (_cSort === 'location') list = [...list].sort((a, b) => String(a.location || '~~~').localeCompare(String(b.location || '~~~')));
+  const count = document.getElementById('cCount'); if (count) count.textContent = list.length;
+  document.getElementById('cBody').innerHTML = list.map((c) => `<tr class="clickable" onclick="location.hash='#/account/${c.account_id}'">
     <td><b>${esc(c.name)}</b></td><td>${esc(c.title || '')}</td>
     <td>${esc((c.persona_level||'').replace(/_/g,' '))} <span class="muted">${esc(c.persona_role||'')}</span></td>
-    <td>${esc(c.account_name)}</td><td>${esc(c.email||'')}</td><td>${esc(c.phone||'')}</td>
+    <td>${esc(c.account_name)}</td>
+    <td>${c.location ? esc(c.location) : '<span class="muted">—</span>'}</td>
+    <td>${esc(c.email||'')}</td><td>${esc(c.phone||'')}</td>
     <td>${c.linkedin?`<a href="${esc(c.linkedin)}" target="_blank">↗</a>`:''}</td><td>${c.confidence}</td><td class="muted">${esc(c.source||'')}</td>
+  </tr>`).join('') || '<tr><td colspan="10" class="empty">No contacts.</td></tr>';
+}
+window._drawContacts = drawContacts;
+window._sortContacts = (k) => { _cSort = _cSort === k ? '' : k; drawContacts(); };
+
+// ---------- NETWORK (brain) ----------
+const NET_STATUS = { warm_reply: ['warm reply', 'green'], ongoing: ['ongoing', 'yellow'], dinner_invite: ['dinner invite', 'blue'], cold: ['cold', 'gray'], known: ['known', 'gray'] };
+function netLabel(s) { return NET_STATUS[s]?.[0] || s; }
+async function renderNetwork() {
+  const d = await api('/network');
+  const order = ['warm_reply', 'ongoing', 'dinner_invite', 'cold', 'known'];
+  const people = [...d.people].sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status));
+  const rows = people.map((p) => `<tr>
+    <td><b>${esc(p.name)}</b></td>
+    <td>${esc(p.company || '—')}</td>
+    <td>${badge(netLabel(p.status), NET_STATUS[p.status]?.[1] || 'gray')}</td>
+    <td>${p.accounts.length ? p.accounts.map((a) => `<a href="#/account/${a.id}">${esc(a.name)}</a> <span class="muted">(${a.score})</span>`).join(', ') : '<span class="muted">not in pipeline</span>'}</td>
+    <td class="muted">${esc(p.text || '')}</td>
   </tr>`).join('');
-  view.innerHTML = `<h2>All contacts (${list.length})</h2>
-    <table><thead><tr><th>Name</th><th>Title</th><th>Persona</th><th>Account</th><th>Email</th><th>Phone</th><th>LinkedIn</th><th>Conf</th><th>Source</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="9" class="empty">No contacts yet.</td></tr>'}</tbody></table>`;
+  const inPipeline = people.filter((p) => p.accounts.length).length;
+  view.innerHTML = `<h2>Warm network (${d.count})</h2>
+    <p class="muted">From your brain — people you already know, matched to pipeline accounts. <b>${inPipeline}</b> overlap your pipeline. Source: <code>${esc(d.vault)}</code></p>
+    <table><thead><tr><th>Person</th><th>Company</th><th>Status</th><th>Pipeline account</th><th>Context</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="5" class="empty">No network data — populate the brain (people.jsonl) or the Trellus export.</td></tr>'}</tbody></table>`;
 }
 
 // ---------- SIGNALS ----------

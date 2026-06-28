@@ -108,6 +108,8 @@ table.queue { margin-bottom: 18px; background: rgba(16, 22, 29, .9); border: 1px
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 13px; vertical-align: top; }
 th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
 tbody tr:hover { background: rgba(124, 110, 240, .07); }
+.warm-net { margin: 12px 18px; padding: 10px 14px; border-radius: 9px; background: rgba(124, 110, 240, .12); border: 1px solid rgba(124, 110, 240, .35); color: var(--text); font-size: 13px; line-height: 1.5; }
+.warm-net b { color: var(--accent2, var(--accent)); }
 tr.clickable { cursor: pointer; }
 
 /* detail */
@@ -1522,7 +1524,8 @@ table.queue, .tile, .card, .rail .box {
   box-shadow: var(--shadow);
 }
 th, td { border-bottom-color: var(--line); }
-tbody tr:hover { background: #f8fafc; }
+/* ponytail: accent tint, not near-white — keeps light text readable on the dark theme (was #f8fafc → white-on-white). */
+tbody tr:hover { background: rgba(124, 110, 240, .16); }
 .toast {
   background: #fff;
   color: #172033;

@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   email         TEXT,
   phone         TEXT,
   linkedin      TEXT,
+  location      TEXT,        -- city / region / country, from Amplemarket
   persona_level TEXT,        -- end_user | manager | decision_maker | department_head
   persona_role  TEXT,        -- e.g. SRE, CTO, Platform Manager
   source        TEXT,
@@ -215,4 +216,26 @@ CREATE TABLE IF NOT EXISTS call_log (
 );
 CREATE INDEX IF NOT EXISTS idx_call_log_account ON call_log(account_id);
 CREATE INDEX IF NOT EXISTS idx_call_log_contact ON call_log(contact_id);
+
+-- Trellus dialer sessions, synced verbatim from the Trellus API (read-only mirror).
+-- Not FK'd to accounts/contacts: Trellus is its own source of truth, matched by
+-- phone/name in the UI rather than at write time. ponytail: flat mirror, add
+-- account_id resolution only if the dashboard needs cross-linking.
+CREATE TABLE IF NOT EXISTS trellus_sessions (
+  session_id     TEXT PRIMARY KEY,
+  started_at     TEXT NOT NULL,        -- ISO 8601
+  started_unix   INTEGER NOT NULL,     -- epoch seconds, for ordering/range
+  direction      TEXT,                 -- inbound | outbound
+  duration_sec   REAL,
+  sip_code       INTEGER,
+  customer_name  TEXT,
+  company_name   TEXT,
+  customer_phone TEXT,
+  agent_phone    TEXT,
+  disposition    TEXT,
+  sentiment      TEXT,
+  purpose        TEXT,
+  synced_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_trellus_started ON trellus_sessions(started_unix DESC);
 `;

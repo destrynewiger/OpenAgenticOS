@@ -21,6 +21,8 @@ import { importAccountsCsv, importContactsCsv, importRealGtm } from './importer.
 import { runResearch, runResearchBatch } from './research/index.js';
 import { generateAndSave } from './callnotes.js';
 import { writeExport } from './exporter.js';
+import { runPipeline } from './pipeline.js';
+import { classifyReply, triageBatch } from './reply.js';
 import { BANDS } from './scoring.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -113,8 +115,88 @@ async function main() {
       console.log(`exported ${out.count} rows → ${out.file}${out.skipped.length ? ' (skipped no-contact: ' + out.skipped.join(', ') + ')' : ''}`);
       break;
     }
+    case 'pipeline': {
+      // Full-auto run. Dry-run unless --send + ENABLE_AMPLEMARKET_PUSH=true + --sequence.
+      //   pipeline [--icp-titles "VP Engineering,Head of SRE"] [--icp-domains a.com,b.com]
+      //            [--limit 25] [--send --sequence <id>]
+      const icp = {};
+      if (opt('--icp-titles')) icp.titles = String(opt('--icp-titles')).split(',').map((s) => s.trim()).filter(Boolean);
+      if (opt('--icp-seniorities')) icp.seniorities = String(opt('--icp-seniorities')).split(',').map((s) => s.trim()).filter(Boolean);
+      if (opt('--icp-departments')) icp.departments = String(opt('--icp-departments')).split(',').map((s) => s.trim()).filter(Boolean);
+      if (opt('--icp-domains')) icp.domains = String(opt('--icp-domains')).split(',').map((s) => s.trim()).filter(Boolean);
+      if (opt('--icp-keywords')) icp.keywords = opt('--icp-keywords');
+      if (opt('--icp-size')) icp.size = Number(opt('--icp-size'));
+      await runPipeline({
+        cfg,
+        icp: Object.keys(icp).length ? icp : undefined,
+        accountIds: idsOpt(),
+        limit: Number(opt('--limit', 25)),
+        send: flag('--send'),
+        sequenceId: opt('--sequence'),
+      });
+      break;
+    }
+    case 'reply': {
+      // Triage one inbound reply. reply "<text>" [--booking https://cal.com/you]
+      const text = args[1] && !args[1].startsWith('--') ? args[1] : '';
+      if (!text) return console.error('usage: reply "<inbound reply text>" [--booking <url>]');
+      const r = await classifyReply(text, { bookingUrl: opt('--booking'), sellerName: cfg.seller?.name });
+      console.log(JSON.stringify(r, null, 2));
+      break;
+    }
+    case 'replies': {
+      // Batch-triage inbound replies. replies <file.json> — [{text, contact, account}]
+      // Feed it from the Amplemarket inbox (MCP list_inbox_threads → this file).
+      const file = args[1];
+      if (!file || !fs.existsSync(file)) return console.error('usage: replies <inbox.json>  (array of {text, contact, account})');
+      const items = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const res = await triageBatch(items, { bookingUrl: opt('--booking') || process.env.BOOKING_URL, sellerName: cfg.seller?.name });
+      const out = path.join(ROOT, 'data', 'exports', `reply_actions_${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+      fs.mkdirSync(path.dirname(out), { recursive: true });
+      fs.writeFileSync(out, JSON.stringify(res.actions, null, 2));
+      console.log(`triaged ${res.count}:`, JSON.stringify(res.counts), `→ ${path.basename(out)}`);
+      break;
+    }
+    case 'dedupe-contacts': {
+      // Collapse same-name dup contacts within an account into the highest-
+      // confidence row. Dry-run unless --apply.  dedupe-contacts [--apply]
+      const apply = flag('--apply');
+      const r = db.dedupeContacts({ apply });
+      console.log(`${apply ? 'merged' : 'would merge'} ${r.groups} groups → delete ${r.contactsDeleted} contacts, backfill ${r.fieldsBackfilled} fields`);
+      console.log(`  call_queue rows repointed: ${r.queueRepointed}   call_log rows repointed: ${r.logRepointed}`);
+      if (r.callNotesDropped || r.researchBriefsDropped) {
+        console.log(`  cascade-dropped on deleted rows: ${r.callNotesDropped} call_notes, ${r.researchBriefsDropped} research_briefs (survivors keep their own)`);
+      }
+      for (const m of r.merges.slice(0, 15)) {
+        const fields = Object.keys(m.patch);
+        console.log(`  acct ${m.account_id} "${m.name}": keep #${m.keepId} (${m.keepTitle || 'no title'}), drop ${m.deleteIds.map((i) => '#' + i).join(',')}${fields.length ? ' (+' + fields.join(',') + ')' : ''}`);
+      }
+      if (r.merges.length > 15) console.log(`  ... and ${r.merges.length - 15} more`);
+      if (!apply) console.log('dry-run — re-run with --apply to write.');
+      break;
+    }
+    case 'backfill-locations': {
+      // Fill contact.location from Amplemarket for existing contacts (top accounts first).
+      //   backfill-locations [--limit 50 | --all]
+      const { enrichPersonLocation } = await import('./providers/amplemarket.js');
+      const { getProviderKey } = await import('./providers/keyStore.js');
+      const key = getProviderKey('amplemarket', cfg);
+      if (!key) return console.error('no Amplemarket key configured');
+      const missing = db.listAllContacts().filter((c) => c.email && !String(c.location || '').trim());
+      const todo = flag('--all') ? missing : missing.slice(0, Number(opt('--limit', 50)));
+      console.log(`backfilling location for ${todo.length} of ${missing.length} contacts missing it (top-score first)...`);
+      let filled = 0;
+      for (const c of todo) {
+        const loc = await enrichPersonLocation({ email: c.email, linkedin: c.linkedin, name: c.name, domain: c.account_domain }, key);
+        if (loc) { db.updateContact(c.id, { location: loc }); filled++; }
+        if (filled && filled % 10 === 0) console.log(`  ${filled} filled...`);
+        await new Promise((r) => setTimeout(r, 250)); // gentle on the API
+      }
+      console.log(`done: ${filled}/${todo.length} got a location.`);
+      break;
+    }
     default:
-      console.log('commands: seed | import <file> [--contacts] | import-real <call-list.csv> [--warm warm.csv] [--remove-examples] | research [<id>|--all] | rescore | list | show <id> | callnotes <id> | export <apollo|amplemarket> [--ids 1,2|--status s] [--out file]');
+      console.log('commands: seed | import <file> [--contacts] | import-real <call-list.csv> [--warm warm.csv] [--remove-examples] | research [<id>|--all] | rescore | list | show <id> | callnotes <id> | dedupe-contacts [--apply] | backfill-locations [--limit N|--all] | pipeline [--icp-titles ..|--icp-domains ..|--limit N|--send --sequence <id>] | reply "<text>" [--booking <url>] | replies <inbox.json> | export <apollo|amplemarket> [--ids 1,2|--status s] [--out file]');
   }
 }
 main().catch((e) => { console.error(e); process.exit(1); });

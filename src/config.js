@@ -42,6 +42,7 @@ export function getConfig() {
   const e = process.env;
   return {
     port: num(e.PORT, 4100),
+    host: str(e.HOST, '127.0.0.1'),
     databaseFile: process.env.DATABASE_FILE || resolveDbFile(str(e.DATABASE_URL)),
 
     seller: {

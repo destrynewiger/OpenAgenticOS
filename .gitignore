@@ -7,6 +7,7 @@ node_modules/
 !.env.example
 data/provider-keys.json
 data/provider-keys.*.json
+data/
 *.pem
 *.key
 *.p12
@@ -27,6 +28,7 @@ data/exports/
 logs/
 *.log
 .claude/
+plans/
 
 # OS/editor noise
 .DS_Store
