@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A local-first control surface for agent tools, memory, and deliberation.">
+    <title>OpenAgenticOS</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="wordmark" href="/" aria-label="OpenAgenticOS home">
+        <span class="mark" aria-hidden="true">O</span>
+        <span>OpenAgenticOS</span>
+      </a>
+      <div class="local-badge"><span aria-hidden="true"></span> Local-only</div>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <p class="eyebrow">Your local agent workspace</p>
+        <h1 id="page-title">One quiet place for the tools doing the work.</h1>
+        <p class="lede">See which local agent surfaces are ready, keep durable notes on this machine, and examine an idea from four practical angles.</p>
+        <dl class="summary" aria-label="Workspace summary">
+          <div><dt>Agents online</dt><dd id="online-count">—</dd></div>
+          <div><dt>Memory notes</dt><dd id="memory-count">—</dd></div>
+          <div><dt>Network boundary</dt><dd>Loopback</dd></div>
+        </dl>
+      </section>
+
+      <section class="section" aria-labelledby="surfaces-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">Surfaces</p><h2 id="surfaces-title">Agent status</h2></div>
+          <button class="button secondary" id="refresh-status" type="button">Refresh</button>
+        </div>
+        <div class="surface-grid" id="surface-grid" aria-live="polite">
+          <p class="empty">Checking local tools…</p>
+        </div>
+      </section>
+
+      <section class="split">
+        <article class="panel" aria-labelledby="council-title">
+          <p class="eyebrow">Council</p>
+          <h2 id="council-title">Pressure-test an idea</h2>
+          <p class="panel-copy">A deterministic, offline review grounded in the current surface status and your newest local note.</p>
+          <form id="council-form">
+            <label for="idea">Idea or decision</label>
+            <textarea id="idea" name="idea" rows="5" maxlength="10000" required placeholder="Describe the workflow, decision, or feature you are considering."></textarea>
+            <button class="button primary" type="submit">Convene council</button>
+          </form>
+          <div class="council-results" id="council-results" aria-live="polite"></div>
+        </article>
+
+        <article class="panel" aria-labelledby="memory-title">
+          <p class="eyebrow">Memory</p>
+          <h2 id="memory-title">Local notes</h2>
+          <p class="panel-copy">Stored in an owner-only file on this machine. Nothing is sent to a hosted service.</p>
+          <form id="memory-form">
+            <label for="note-title">Title</label>
+            <input id="note-title" name="title" maxlength="160" required placeholder="Constraint, decision, or context">
+            <label for="note-body">Note</label>
+            <textarea id="note-body" name="body" rows="4" maxlength="20000" required placeholder="Capture what future work should remember."></textarea>
+            <button class="button primary" type="submit">Save note</button>
+          </form>
+          <div class="note-list" id="note-list" aria-live="polite"></div>
+        </article>
+      </section>
+    </main>
+
+    <footer>Open source. Local by default. Your machine remains the boundary.</footer>
+  </body>
+</html>

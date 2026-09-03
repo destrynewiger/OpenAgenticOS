@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "port": 4180,
+  "surfaces": [
+    {
+      "id": "my-local-agent",
+      "label": "My Local Agent",
+      "description": "An agent command installed on this machine",
+      "probe": {
+        "type": "command",
+        "command": ["my-agent", "--version"]
+      }
+    },
+    {
+      "id": "my-local-service",
+      "label": "My Local Service",
+      "description": "A service listening on the loopback interface",
+      "probe": {
+        "type": "http",
+        "url": "http://127.0.0.1:8080/health"
+      }
+    }
+  ]
+}
