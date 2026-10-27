@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "skills": {
+    "typesafe-ai": {
+      "source": "typesafe-ai/skills",
+      "sourceType": "github",
+      "skillPath": "skills/typesafe-ai/SKILL.md",
+      "computedHash": "ef090d74a21a77aa5f40be9df7696fe782247138f4a421cc402cd84951268475",
+      "ref": "65a39f393687675ce170e6094757de20370365b9"
+    }
+  }
+}

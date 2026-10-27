@@ -65,3 +65,9 @@ Read [SECURITY.md](SECURITY.md) before exposing the process through a proxy or c
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Project agent guidance
+
+The repository includes a pinned TypeSafe guidance skill for project-aware agents
+in `.agents` and `.cursor`. It does not add a runtime dependency or configure a
+hosted model. See [provenance, scope and verification](docs/TYPESAFE-SKILL.md).
